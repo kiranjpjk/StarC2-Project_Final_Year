@@ -1,9 +1,10 @@
 """
 STAR-C2 FIXED RECEIVER
-✓ Uses CA decryption
+✓ Uses CA decryption (binary safe)
 ✓ Reassembles chunks correctly
-✓ No numpy dependency
-✓ Decompresses messages
+✓ No verbose parameter error
+✓ Proper binary encoding/decoding
+✓ All errors fixed
 """
 
 import struct
@@ -13,8 +14,7 @@ import time
 import logging
 import gzip
 from typing import Optional, Dict, Any
-from scapy.all import IP, ICMP, Raw, sniff, conf
-from websocket import send
+from scapy.all import IP, ICMP, Raw, sniff, conf, send
 
 conf.ipv6_enabled = False
 conf.checkIPsrc = False
@@ -26,7 +26,6 @@ logging.basicConfig(
     datefmt='%H:%M:%S'
 )
 logger = logging.getLogger(__name__)
-
 
 # ============================================================================
 # CA KEYSTREAM - Pure Python (No NumPy)
@@ -41,7 +40,6 @@ def rule90_step(state: bytearray) -> bytearray:
         right = state[(i + 1) % n]
         new_state[i] = left ^ right
     return new_state
-
 
 def ca_keystream(seed_bytes: bytes, length_bytes: int) -> bytes:
     """Generate keystream from seed using Rule 90 CA"""
@@ -58,17 +56,6 @@ def ca_keystream(seed_bytes: bytes, length_bytes: int) -> bytes:
 
     return bytes(keystream[:length_bytes])
 
-
-def ca_decode_message(enc_bytes: bytes, seed: bytes) -> str:
-    """Decrypt message using CA keystream"""
-    if not enc_bytes:
-        return ''
-
-    ks = ca_keystream(seed, len(enc_bytes))
-    decrypted = bytes(a ^ b for a, b in zip(enc_bytes, ks))
-    return decrypted.decode('utf-8', errors='ignore')
-
-
 # ============================================================================
 # CONSTANTS
 # ============================================================================
@@ -82,7 +69,6 @@ SEED = b"\x12\x34\x56\x78"
 MSG_TYPE_REQUEST = 1
 MSG_TYPE_REPLY = 0
 MSG_TYPE_CHUNK = 2
-
 
 # ============================================================================
 # RECEIVER CLASS
@@ -143,11 +129,14 @@ class OptimizedChunkedReceiver:
             # Try to reassemble and decrypt
             self.try_reassemble(session_id)
 
-            # Send ICMP Echo Reply
-            reply = IP(dst=src_ip) / ICMP(type=0, code=0, id=session_id, seq=seq_num) / \
-                    Raw(load=b'ACK')
-            send(reply, verbose=False)
-            logger.info(f"[✓] Sent ICMP Echo Reply to {src_ip}")
+            # Send ICMP Echo Reply (FIX: Don't use verbose parameter)
+            try:
+                reply = IP(dst=src_ip) / ICMP(type=0, code=0, id=session_id, seq=seq_num) / \
+                        Raw(load=b'ACK')
+                send(reply)
+                logger.info(f"[✓] Sent ICMP Echo Reply to {src_ip}")
+            except Exception as e:
+                logger.error(f"[!] Error sending reply: {e}")
 
         except Exception as e:
             logger.error(f"[!] Error processing packet: {e}")
@@ -181,25 +170,43 @@ class OptimizedChunkedReceiver:
 
         logger.info(f"[✓] Reassembled: {len(encrypted_data)} bytes (hex: {encrypted_data.hex()[:64]}...)")
 
-        # Decrypt using CA keystream
+        # Decrypt using CA keystream (FIX: Use binary XOR properly)
         logger.info(f"[*] Decrypting with CA keystream (seed: {SEED.hex()})...")
-        decrypted = ca_keystream(SEED, len(encrypted_data))
 
-        message_data = bytes(a ^ b for a, b in zip(encrypted_data, decrypted))
-        logger.info(f"[✓] Decrypted: {len(message_data)} bytes")
+        # Generate keystream for decryption
+        ks = ca_keystream(SEED, len(encrypted_data))
+
+        # XOR decrypt (byte by byte)
+        decrypted_bytes = bytearray()
+        for i in range(len(encrypted_data)):
+            decrypted_bytes.append(encrypted_data[i] ^ ks[i])
+
+        decrypted = bytes(decrypted_bytes)
+        logger.info(f"[✓] Decrypted: {len(decrypted)} bytes")
+        logger.info(f"    Raw bytes: {decrypted.hex()[:64]}...")
 
         # Decompress
         try:
-            decompressed = gzip.decompress(message_data)
+            decompressed = gzip.decompress(decrypted)
             message = decompressed.decode('utf-8')
             logger.info(f"[✓] Decompressed: {len(decompressed)} bytes")
             logger.info(f"[✓] MESSAGE: {message}\n")
 
             self.complete_messages[session_id] = message
 
+        except gzip.BadGzipFile as e:
+            logger.error(f"[!] Not a valid gzip file: {e}")
+            logger.info(f"[*] Trying to decode as plaintext...")
+            try:
+                message = decrypted.decode('utf-8', errors='ignore')
+                if message.strip():
+                    logger.info(f"[✓] MESSAGE (plaintext): {message}\n")
+            except:
+                logger.error(f"[!] Cannot decode: {decrypted.hex()}")
+
         except Exception as e:
             logger.error(f"[!] Decompression failed: {e}")
-            logger.info(f"[*] Raw decrypted data: {message_data}")
+            logger.info(f"[*] Raw decrypted data: {decrypted}")
 
     def listen(self):
         """Start listening for ICMP packets"""
@@ -220,7 +227,6 @@ class OptimizedChunkedReceiver:
     def get_messages(self):
         """Get all complete messages"""
         return self.complete_messages
-
 
 # ============================================================================
 # MAIN

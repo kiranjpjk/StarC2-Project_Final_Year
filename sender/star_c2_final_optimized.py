@@ -1,9 +1,10 @@
 """
 STAR-C2 FIXED SENDER
-✓ Uses CA encryption
+✓ Uses CA encryption (binary safe)
 ✓ Real chunking (16-byte chunks)
 ✓ Realistic timing (200-500ms delays)
 ✓ No numpy dependency
+✓ All errors fixed
 """
 
 import struct
@@ -26,7 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 # ============================================================================
 # CA KEYSTREAM - Pure Python (No NumPy)
 # ============================================================================
@@ -41,52 +41,31 @@ def rule90_step(state: bytearray) -> bytearray:
         new_state[i] = left ^ right
     return new_state
 
-
 def ca_keystream(seed_bytes: bytes, length_bytes: int) -> bytes:
     """Generate keystream from seed using Rule 90 CA"""
     if not seed_bytes or length_bytes == 0:
         return b''
 
-    # Initialize state from seed
     state = bytearray(seed_bytes)
     keystream = bytearray()
 
-    # Generate enough keystream
     while len(keystream) < length_bytes:
-        # Use middle bit of state as keystream
         middle_byte = state[len(state) // 2]
         keystream.append(middle_byte)
-
-        # Evolve state
         state = rule90_step(state)
 
     return bytes(keystream[:length_bytes])
 
-
-def ca_encode_message(msg: str, seed: bytes) -> bytes:
-    """Encrypt message using CA keystream"""
-    if not msg:
+def ca_encode_message(msg_bytes: bytes, seed: bytes) -> bytes:
+    """Encrypt message bytes using CA keystream"""
+    if not msg_bytes:
         return b''
 
-    msg_bytes = msg.encode('utf-8')
     ks = ca_keystream(seed, len(msg_bytes))
 
-    # XOR encryption
+    # XOR encryption (byte by byte)
     encrypted = bytes(a ^ b for a, b in zip(msg_bytes, ks))
     return encrypted
-
-
-def ca_decode_message(enc_bytes: bytes, seed: bytes) -> str:
-    """Decrypt message using CA keystream"""
-    if not enc_bytes:
-        return ''
-
-    ks = ca_keystream(seed, len(enc_bytes))
-
-    # XOR decryption (same as encryption)
-    decrypted = bytes(a ^ b for a, b in zip(enc_bytes, ks))
-    return decrypted.decode('utf-8', errors='ignore')
-
 
 # ============================================================================
 # CONSTANTS
@@ -97,14 +76,13 @@ SATID = b"GXY"
 FRAME_ID = 0xA1
 SEED = b"\x12\x34\x56\x78"
 CHUNK_SIZE = 16  # Fixed chunk size (16 bytes)
-MIN_DELAY = 0.2  # Minimum delay (200ms)
-MAX_DELAY = 0.5  # Maximum delay (500ms)
+MIN_DELAY = 0.2   # Minimum delay (200ms)
+MAX_DELAY = 0.5   # Maximum delay (500ms)
 
 # Message Types
 MSG_TYPE_REQUEST = 1
 MSG_TYPE_REPLY = 0
 MSG_TYPE_CHUNK = 2
-
 
 # ============================================================================
 # SENDER CLASS
@@ -140,19 +118,21 @@ class OptimizedChunkedSender:
 
         logger.info(f"\n[*] Sending message: '{message}'")
 
-        # Step 1: Compress
+        # Step 1: Compress (message → compressed bytes)
         compressed = self.compress_message(message)
         logger.info(f"[✓] Compressed: {len(message)} → {len(compressed)} bytes")
 
-        # Step 2: Encrypt using CA keystream
-        encrypted = ca_encode_message(compressed.decode('latin-1'), SEED)
+        # Step 2: Encrypt using CA keystream (FIX: Use bytes directly, not string)
+        ks = ca_keystream(SEED, len(compressed))
+        encrypted = bytes(a ^ b for a, b in zip(compressed, ks))
+
         logger.info(f"[✓] Encrypted: {len(encrypted)} bytes")
         logger.info(f"[✓] Encrypted payload (hex): {encrypted.hex()[:64]}...")
 
         # Step 3: Split into REAL chunks
         chunks = []
         for i in range(0, len(encrypted), CHUNK_SIZE):
-            chunk = encrypted[i:i + CHUNK_SIZE]
+            chunk = encrypted[i:i+CHUNK_SIZE]
             chunks.append(chunk)
 
         logger.info(f"[✓] Split into {len(chunks)} chunks ({CHUNK_SIZE} bytes each)")
@@ -165,8 +145,8 @@ class OptimizedChunkedSender:
                   Raw(load=chunk)
 
             # Send packet
-            logger.info(f"    [{i + 1}/{len(chunks)}] Sending chunk ({len(chunk)} bytes, seq={self.seq_num})")
-            send(pkt, verbose=False)
+            logger.info(f"    [{i+1}/{len(chunks)}] Sending chunk ({len(chunk)} bytes, seq={self.seq_num})")
+            send(pkt)
 
             self.seq_num += 1
 
@@ -185,7 +165,6 @@ class OptimizedChunkedSender:
     def send_response(self, response: str):
         """Send a response message"""
         self.send_optimized(f"RESPONSE:{response}")
-
 
 # ============================================================================
 # MAIN
