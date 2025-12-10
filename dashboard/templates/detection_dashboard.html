@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICMP Covert Channel Detection</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔍 ICMP Covert Channel Detection System</h1>
+            <p>Real-time detection of advanced ICMP C2 communication</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <button class="btn btn-primary" onclick="startCapture()">▶ Start Capture</button>
+            <button class="btn btn-danger" onclick="stopCapture()">⏹ Stop Capture</button>
+            <button class="btn btn-secondary" onclick="clearResults()">🗑 Clear Results</button>
+            <div class="status" id="capture-status">Status: Idle</div>
+        </div>
+
+        <!-- Statistics Panel -->
+        <div class="stats-panel">
+            <div class="stat-box">
+                <h3>Total Packets</h3>
+                <p class="stat-value" id="total-packets">0</p>
+            </div>
+            <div class="stat-box">
+                <h3>Detected Covert</h3>
+                <p class="stat-value detected" id="detected-packets">0</p>
+            </div>
+            <div class="stat-box">
+                <h3>Detection Rate</h3>
+                <p class="stat-value" id="detection-rate">0%</p>
+            </div>
+            <div class="stat-box">
+                <h3>Avg Entropy</h3>
+                <p class="stat-value" id="avg-entropy">0</p>
+            </div>
+        </div>
+
+        <!-- Live Packets Table -->
+        <div class="packets-section">
+            <h2>Live Captured Packets</h2>
+            <table id="packets-table" class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Source IP</th>
+                        <th>Size</th>
+                        <th>Entropy</th>
+                        <th>Confidence</th>
+                        <th>Verdict</th>
+                    </tr>
+                </thead>
+                <tbody id="packets-body">
+                    <tr><td colspan="6" class="empty">No packets captured</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3>Entropy Trend</h3>
+                <div id="entropy-chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>Confidence Distribution</h3>
+                <div id="confidence-chart"></div>
+            </div>
+        </div>
+
+        <!-- Detection Techniques -->
+        <div class="techniques-section">
+            <h2>7-Technique Detection Analysis</h2>
+            <div class="techniques-grid" id="techniques-grid">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

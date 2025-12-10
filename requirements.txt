@@ -1,0 +1,5 @@
+Flask==2.3.0
+scapy==2.5.0
+plotly==5.14.0
+python-dotenv==1.0.0
+werkzeug==2.3.0

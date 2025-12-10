@@ -1,0 +1,11 @@
+# Update pip
+pip install --upgrade pip
+
+# Install all required packages
+pip install flask==2.3.0
+pip install flask-cors==4.0.0
+pip install scapy==2.5.0
+pip install python-dotenv==1.0.0
+
+# Verify installations
+pip list | grep -E "flask|scapy|cors"
